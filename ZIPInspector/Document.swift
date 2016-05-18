@@ -8,36 +8,95 @@
 
 import Cocoa
 
-class Document: NSDocument {
-
+class Document: NSDocument, NSTableViewDataSource {
+    
+    @IBOutlet weak var tableView: NSTableView!
+    
+    var filenames: [String] = []
+    
+    
     override init() {
         super.init()
         // Add your subclass-specific initialization here.
     }
-
+    
+    
+    override func windowControllerDidLoadNib(aController: NSWindowController) {
+        super.windowControllerDidLoadNib(aController)
+        // Add any code here that needs to be executed once the windowController has loaded the document's window.
+    }
+    
+    
     override class func autosavesInPlace() -> Bool {
         return true
     }
-
+    
+    
     override var windowNibName: String? {
         // Returns the nib file name of the document
         // If you need to use a subclass of NSWindowController or if your document supports multiple NSWindowControllers, you should remove this property and override -makeWindowControllers instead.
         return "Document"
     }
-
-    override func dataOfType(typeName: String) throws -> NSData {
-        // Insert code here to write your document to data of the specified type. If outError != nil, ensure that you create and set an appropriate error when returning nil.
-        // You can also choose to override fileWrapperOfType:error:, writeToURL:ofType:error:, or writeToURL:ofType:forSaveOperation:originalContentsURL:error: instead.
-        throw NSError(domain: NSOSStatusErrorDomain, code: unimpErr, userInfo: nil)
+    
+    override func readFromURL(url: NSURL, ofType typeName: String) throws {
+        // Which file are we getting the zipinfo for?
+        let filename = url.path!
+        
+        // Prepare a task object
+        let task = NSTask()
+        task.launchPath = "/usr/bin/zipinfo"
+        task.arguments = ["-1", filename]
+        
+        // Create the pipe to read from
+        let outPipe = NSPipe()
+        task.standardOutput = outPipe
+        
+        // Start the process
+        task.launch()
+        
+        // Read the output
+        let fileHandle = outPipe.fileHandleForReading
+        let data = fileHandle.readDataToEndOfFile()
+        
+        // Make sure the task terminates normally
+        task.waitUntilExit()
+        let status = task.terminationStatus
+        
+        // Check status
+        guard status == 0 else {
+            let errorDomain = "com.bignerdranch.ProcessReturnCodeErrorDomain"
+            let errorInfo
+                = [ NSLocalizedFailureReasonErrorKey : "zipinfo returned \(status)"]
+            let error = NSError(domain: errorDomain,
+                                code: 0,
+                                userInfo: errorInfo)
+            throw error
+        }
+        
+        // Convert to a string
+        let string = String(data: data, encoding: NSUTF8StringEncoding)!
+        
+        // Break the string into lines
+        filenames = string.componentsSeparatedByString("\n")
+        print("filenames = \(filenames)")
+        
+        // In case of revert
+        tableView?.reloadData()
     }
-
-    override func readFromData(data: NSData, ofType typeName: String) throws {
-        // Insert code here to read your document from the given data of the specified type. If outError != nil, ensure that you create and set an appropriate error when returning false.
-        // You can also choose to override readFromFileWrapper:ofType:error: or readFromURL:ofType:error: instead.
-        // If you override either of these, you should also override -isEntireFileLoaded to return false if the contents are lazily loaded.
-        throw NSError(domain: NSOSStatusErrorDomain, code: unimpErr, userInfo: nil)
+    
+    
+    
+    
+    // MARK: - NSTableViewDataSource
+    func numberOfRowsInTableView(tableView: NSTableView) -> Int {
+        return filenames.count
     }
-
-
+    
+    
+    func tableView(tableView: NSTableView, objectValueForTableColumn tableColumn: NSTableColumn?, row: Int) -> AnyObject? {
+        return filenames[row]
+    }
+    
+    
 }
 
